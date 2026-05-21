@@ -9,11 +9,15 @@ public class SpielPanel extends JPanel implements ActionListener {
     private static final int SCREEN_HEIGHT = 600;
     private static final int UNIT_SIZE = 25; // Размер одного блока (змейки/еды)
     private static final int GAME_UNITS = (SCREEN_WIDTH * SCREEN_HEIGHT) / UNIT_SIZE;
-    private static final int DELAY = 150; // Скорость игры (меньше = быстрее)
+    private final int INITIAL_DELAY = 300; // Было 150, ставим 200 для плавного старта
 
     // Массивы для хранения координат тела змейки
     private final int[] x = new int[GAME_UNITS];
     private final int[] y = new int[GAME_UNITS];
+
+    private final int NUM_OBSTACLES = 5; // Количество препятствий на поле
+    private final int[] obstacleX = new int[NUM_OBSTACLES];
+    private final int[] obstacleY = new int[NUM_OBSTACLES];
 
     private int bodyParts = 3; // Стартовая длина
     private int applesEaten = 0;
@@ -37,9 +41,18 @@ public class SpielPanel extends JPanel implements ActionListener {
     }
 
     public void starteGefecht() {
+        generiereHindernisse();
         neuerApfel();
         running = true;
-        timer = new Timer(DELAY, this);
+
+        // Если таймер ещё не был создан — создаём его со стартовой скоростью
+        if (timer == null) {
+            timer = new Timer(INITIAL_DELAY, this);
+        } else {
+            // Если он уже есть (например, при перезапуске на 'R'), просто сбрасываем скорость на стартовую
+            timer.setDelay(INITIAL_DELAY);
+        }
+
         timer.start();
     }
 
@@ -60,12 +73,26 @@ public class SpielPanel extends JPanel implements ActionListener {
             g.drawString("Score: " + applesEaten, 10, 30);
             g.drawString("Level: " + level, SCREEN_WIDTH - 110, 30);
 
+            // Рисуем препятствия (Hindernisse)
+            g.setColor(Color.GRAY); // Серый цвет для кирпичей
+            for (int i = 0; i < NUM_OBSTACLES; i++) {
+                // Рисуем сам блок
+                g.fillRect(obstacleX[i], obstacleY[i], UNIT_SIZE, UNIT_SIZE);
+
+                // Делаем легкую черную рамку вокруг каждого блока, чтобы они выглядели как отдельные кирпичи
+                g.setColor(Color.BLACK);
+                g.drawRect(obstacleX[i], obstacleY[i], UNIT_SIZE, UNIT_SIZE);
+                g.setColor(Color.GRAY); // Возвращаем цвет для следующей итерации
+            }
+
 // Если игра на паузе — пишем это по центру
             if (paused) {
                 g.setColor(Color.YELLOW);
                 g.setFont(new Font("Arial", Font.BOLD, 40));
                 g.drawString("PAUSED", (SCREEN_WIDTH - g.getFontMetrics().stringWidth("PAUSED")) / 2, SCREEN_HEIGHT / 2);
             }
+
+
 
             // Рисуем змейку
             for (int i = 0; i < bodyParts; i++) {
@@ -83,6 +110,26 @@ public class SpielPanel extends JPanel implements ActionListener {
             g.drawString("Score: " + applesEaten, 10, 30);
         } else {
             gameOver(g);
+        }
+    }
+
+    public void generiereHindernisse() {
+        Random random = new Random();
+        for (int i = 0; i < NUM_OBSTACLES; i++) {
+            while (true) {
+                // Генерируем случайную точку на сетке
+                int targetX = random.nextInt((int)(SCREEN_WIDTH / UNIT_SIZE)) * UNIT_SIZE;
+                int targetY = random.nextInt((int)(SCREEN_HEIGHT / UNIT_SIZE)) * UNIT_SIZE;
+
+                // Проверяем, чтобы блок не появился на стартовой позиции змейки (в левом верхнем углу)
+                if (targetX < UNIT_SIZE * 5 && targetY == 0) {
+                    continue; // Генерируем заново
+                }
+
+                obstacleX[i] = targetX;
+                obstacleY[i] = targetY;
+                break; // Координаты подходят, переходим к следующему блоку
+            }
         }
     }
 
@@ -112,32 +159,59 @@ public class SpielPanel extends JPanel implements ActionListener {
             applesEaten++;
             neuerApfel();
 
-            // Каждые 5 яблок повышаем уровень и ускоряем таймер
+            SoundManager.playSound("eat.wav");
+
+            // Уровни растут каждые 5 яблок
             if (applesEaten % 5 == 0) {
                 level++;
-                // Уменьшаем задержку (базовая была 150), но не делаем её меньше 40, иначе будет неиграбельно
-                int neueVerzoegerung = Math.max(150 - (level * 15), 40);
-                timer.setDelay(neueVerzoegerung);
+
+                // Теперь всё строго на английском, без колхоза
+                int currentDelay = timer.getDelay();
+                int newDelay = currentDelay - 10;
+
+                // Безопасный предел скорости
+                if (newDelay < 70) {
+                    newDelay = 70;
+                }
+
+                timer.setDelay(newDelay);
+
+                System.out.println("Level UP! Level: " + level + ", Delay: " + newDelay + " ms");
             }
         }
     }
 
     public void pruefeKollisionen() {
-        // Столкновение головы с телом
+        // 1. ЖЕЛЕЗНАЯ ПРОВЕРКА КИРПИЧЕЙ
+        if (running) {
+            for (int i = 0; i < NUM_OBSTACLES; i++) {
+                if ((x[0] == obstacleX[i]) && (y[0] == obstacleY[i])) {
+                    System.out.println("СТОЛКНОВЕНИЕ С КИРПИЧОМ! Игрок врезался в блок " + i); // Отладка
+                    running = false;
+                    break;
+                }
+            }
+        }
+
+        // 2. Проверка столкновения с собственным телом
         for (int i = bodyParts; i > 0; i--) {
             if ((x[0] == x[i]) && (y[0] == y[i])) {
                 running = false;
                 break;
             }
         }
-        // Столкновение головы с границами экрана
+
+        // 3. Проверка столкновения со стенами
         if (x[0] < 0 || x[0] >= SCREEN_WIDTH || y[0] < 0 || y[0] >= SCREEN_HEIGHT) {
             running = false;
         }
 
+        // 4. Если игра окончена — останавливаем всё строго ОДИН раз
         if (!running) {
-            timer.stop();
-            // Сохраняем рекорд при завершении игры
+            if (timer != null && timer.isRunning()) {
+                timer.stop();
+            }
+            SoundManager.playSound("gameover.wav");
             HighScoreManager.saveScore(spielerName, applesEaten);
         }
     }
@@ -148,14 +222,13 @@ public class SpielPanel extends JPanel implements ActionListener {
         level = 1;
         direction = 'R';
         paused = false;
-        timer.setDelay(150); // Возвращаем стартовую скорость
 
-        // Сбрасываем координаты змейки (чтобы она не появилась на месте прошлой смерти)
+        timer.setDelay(150); // ТУТ ДОЛЖНА БЫТЬ ТВОЯ СТАРТОВАЯ КОМФОРТНАЯ СКОРОСТЬ!
+
         for (int i = 0; i < bodyParts; i++) {
             x[i] = 0;
             y[i] = 0;
         }
-
         starteGefecht();
     }
 
@@ -182,7 +255,7 @@ public class SpielPanel extends JPanel implements ActionListener {
         g.setColor(Color.LIGHT_GRAY);
         g.setFont(new Font("Consolas", Font.PLAIN, 16)); // Моноширинный шрифт, чтобы колонки были ровными
 
-        // Добавь это в конец метода gameOver, чтобы подсказать кнопку перезапуска
+        // подсказать кнопку перезапуска
         g.setColor(Color.GREEN);
         g.setFont(new Font("Arial", Font.BOLD, 16));
         g.drawString("Drücke 'R' für Neustart", (SCREEN_WIDTH - g.getFontMetrics().stringWidth("Drücke 'R' für Neustart")) / 2, SCREEN_HEIGHT - 30);
@@ -192,7 +265,7 @@ public class SpielPanel extends JPanel implements ActionListener {
 
         // Выводим только топ-10 результатов, чтобы они не вылезли за экран
         for (String line : scores) {
-            if (rank > 10) break;
+            if (rank > 5) break;
 
             // Разделяем строку "Имя;Очки;Дата"
             String[] parts = line.split(";");
