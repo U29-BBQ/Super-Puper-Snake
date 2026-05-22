@@ -33,6 +33,7 @@ public class SpielPanel extends JPanel implements ActionListener {
     private Random random = new Random();
 
     private char direction = 'R'; // R = Right, L = Left, U = Up, D = Down
+    private char lastPhysicalDirection = 'R'; // Хранит направление последнего реального шага (защита от бага 180°)
     private boolean running = false;
     private boolean paused = false; // Флаг для паузы
     private int level = 1;          // Текущий уровень
@@ -41,13 +42,15 @@ public class SpielPanel extends JPanel implements ActionListener {
     private Timer infoTimer;            // Отдельный таймер для времени
     private final String spielerName;
     private Color snakeFarbe;
+    private GameTheme aktuelleTheme;
 
-    public SpielPanel(String spielerName, Color farbe) {
+    public SpielPanel(String spielerName, Color farbe, GameTheme theme) {
         this.spielerName = spielerName;
         this.snakeFarbe = farbe; // Сохраняем переданный из логина цвет
+        this.aktuelleTheme = theme; // Сохраняем выбранную тему
 
         this.setPreferredSize(new Dimension(SCREEN_WIDTH, SCREEN_HEIGHT));
-        this.setBackground(Color.BLACK);
+        this.setBackground(theme.getBackgroundColor()); // Устанавливаем фон из темы!
         this.setFocusable(true);
         this.addKeyListener(new MyKeyAdapter());
         startGame();
@@ -136,8 +139,8 @@ public class SpielPanel extends JPanel implements ActionListener {
 
     public void zeichnen(Graphics g) {
         if (running) {
-            // 1. Рисуем еду (яблоко)
-            g.setColor(Color.RED);
+            // 1. Рисуем еду (яблоко) с учетом темы
+            g.setColor(aktuelleTheme.getAppleColor());
             g.fillOval(appleX, appleY, UNIT_SIZE, UNIT_SIZE);
 
             // 2. Рисуем Spezial-Food, если оно активно
@@ -151,13 +154,20 @@ public class SpielPanel extends JPanel implements ActionListener {
                 }
             }
 
-            // 3. Рисуем препятствия (Hindernisse)
-            g.setColor(Color.GRAY);
+            // 3. Рисуем препятствия (Hindernisse) с учетом выбранной темы
+            g.setColor(aktuelleTheme.getWallColor());
             for (int i = 0; i < NUM_OBSTACLES; i++) {
                 g.fillRect(obstacleX[i], obstacleY[i], UNIT_SIZE, UNIT_SIZE);
-                g.setColor(Color.BLACK);
+
+                // Для Nokia убираем черный контур, делаем его под цвет фона
+                if (aktuelleTheme == GameTheme.RETRO) {
+                    g.setColor(aktuelleTheme.getBackgroundColor());
+                } else {
+                    g.setColor(Color.BLACK);
+                }
                 g.drawRect(obstacleX[i], obstacleY[i], UNIT_SIZE, UNIT_SIZE);
-                g.setColor(Color.GRAY);
+
+                g.setColor(aktuelleTheme.getWallColor());
             }
 
             // 4. Рисуем змейку
@@ -172,15 +182,20 @@ public class SpielPanel extends JPanel implements ActionListener {
             }
 
             // === 5. ПОЛУПРОЗРАЧНОЕ ТАБЛО HUD ===
-            g.setColor(new Color(0, 0, 0, 180)); // Черный с прозрачностью 180 из 255
+            // На светлой теме делаем плашку HUD светлой, на остальных — темной
+            if (aktuelleTheme == GameTheme.MODERN) {
+                g.setColor(new Color(255, 255, 255, 200));
+            } else {
+                g.setColor(new Color(0, 0, 0, 180));
+            }
             g.fillRect(0, 0, SCREEN_WIDTH, HUD_HEIGHT);
 
             // Тонкая разделительная линия под табло
-            g.setColor(Color.DARK_GRAY);
+            g.setColor(aktuelleTheme == GameTheme.MODERN ? Color.LIGHT_GRAY : Color.DARK_GRAY);
             g.drawLine(0, HUD_HEIGHT, SCREEN_WIDTH, HUD_HEIGHT);
 
-            // Отрисовка датчиков на табло (сдвиг по Y на 32 для центрирования)
-            g.setColor(Color.WHITE);
+            // Цвет текста на табло в зависимости от темы
+            g.setColor(aktuelleTheme == GameTheme.MODERN ? Color.BLACK : Color.WHITE);
             g.setFont(new Font("Arial", Font.BOLD, 18));
             g.drawString("Score: " + applesEaten, 15, 32);
             g.drawString("Level: " + level, SCREEN_WIDTH - 110, 32);
@@ -190,23 +205,29 @@ public class SpielPanel extends JPanel implements ActionListener {
             g.drawString(zeitText, textX, 32);
             // ====================================================================
 
-            // Если игра на паузе — затемняем поле и выводим надпись с инструкцией
+            // === 6. ЭКРАН ПАУЗЫ ===
             if (paused) {
-                g.setColor(new Color(0, 0, 0, 150));
+                // На светлой теме делаем белое полупрозрачное наложение, на темных — черное
+                if (aktuelleTheme == GameTheme.MODERN) {
+                    g.setColor(new Color(255, 255, 255, 150));
+                } else {
+                    g.setColor(new Color(0, 0, 0, 150));
+                }
                 g.fillRect(0, HUD_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT - HUD_HEIGHT);
 
-                g.setColor(Color.YELLOW);
+                // Текст "PAUSED"
+                g.setColor(aktuelleTheme == GameTheme.RETRO ? aktuelleTheme.getWallColor() : Color.RED);
                 g.setFont(new Font("Arial", Font.BOLD, 40));
                 g.drawString("PAUSED", (SCREEN_WIDTH - g.getFontMetrics().stringWidth("PAUSED")) / 2, SCREEN_HEIGHT / 2 - 20);
 
-                g.setColor(Color.WHITE);
+                // Подсказка для снятия с паузы
+                g.setColor(aktuelleTheme == GameTheme.MODERN ? Color.DARK_GRAY : Color.WHITE);
                 g.setFont(new Font("Arial", Font.PLAIN, 18));
                 String resumeText = "Drücke 'P' zum Fortsetzen";
                 g.drawString(resumeText, (SCREEN_WIDTH - g.getFontMetrics().stringWidth(resumeText)) / 2, SCREEN_HEIGHT / 2 + 30);
             }
 
         } else {
-            // ИГРА НЕ ИДЕТ: Сразу показываем финальное окно Game Over
             gameOver(g);
         }
     }
@@ -302,6 +323,9 @@ public class SpielPanel extends JPanel implements ActionListener {
             case 'L' -> x[0] = x[0] - UNIT_SIZE;
             case 'R' -> x[0] = x[0] + UNIT_SIZE;
         }
+
+        // Фиксируем физический шаг змейки в буфере направления
+        lastPhysicalDirection = direction;
     }
 
     public void pruefeApfel() {
@@ -378,6 +402,7 @@ public class SpielPanel extends JPanel implements ActionListener {
         applesEaten = 0;
         level = 1;
         direction = 'R';
+        lastPhysicalDirection = 'R'; // Очищаем буфер шагов при сбросе
         paused = false;
 
         if (timer != null) {
@@ -388,31 +413,50 @@ public class SpielPanel extends JPanel implements ActionListener {
     }
 
     public void gameOver(Graphics g) {
-        // Очищаем экран черным фоном перед выводом Game Over
-        g.setColor(Color.BLACK);
+        // Очищаем экран фоном нашей текущей темы
+        g.setColor(aktuelleTheme.getBackgroundColor());
         g.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-        g.setColor(Color.RED);
+        // Настройка контрастных цветов для шрифтов в зависимости от темы
+        Color hauptTextFarbe;   // Для "Game Over" и важных заголовков
+        Color infoTextFarbe;    // Для обычного текста и очков
+        Color neustartFarbe;    // Для надписи "Нажмите R"
+
+        if (aktuelleTheme == GameTheme.RETRO) {
+            hauptTextFarbe = aktuelleTheme.getWallColor();
+            infoTextFarbe = aktuelleTheme.getWallColor();
+            neustartFarbe = aktuelleTheme.getWallColor();
+        } else if (aktuelleTheme == GameTheme.MODERN) {
+            hauptTextFarbe = Color.RED;
+            infoTextFarbe = new Color(40, 40, 40); // Тёмно-серый для отличной читаемости на светлом
+            neustartFarbe = new Color(0, 120, 0);  // Тёмно-зелёный
+        } else { // Dark Mode
+            hauptTextFarbe = Color.RED;
+            infoTextFarbe = Color.WHITE;
+            neustartFarbe = Color.GREEN;
+        }
+
+        // 1. Заголовок Game Over
+        g.setColor(hauptTextFarbe);
         g.setFont(new Font("Arial", Font.BOLD, 40));
         FontMetrics metrics1 = getFontMetrics(g.getFont());
         g.drawString("Game Over", (SCREEN_WIDTH - metrics1.stringWidth("Game Over")) / 2, 80);
 
-        g.setColor(Color.WHITE);
+        // 2. Текущий результат игрока
+        g.setColor(infoTextFarbe);
         g.setFont(new Font("Arial", Font.BOLD, 20));
         FontMetrics metrics2 = getFontMetrics(g.getFont());
         g.drawString("Dein Score: " + applesEaten, (SCREEN_WIDTH - metrics2.stringWidth("Dein Score: " + applesEaten)) / 2, 120);
 
-        g.setColor(Color.YELLOW);
+        // 3. Заголовок таблицы рекордов
+        g.setColor(aktuelleTheme == GameTheme.RETRO ? aktuelleTheme.getWallColor() : Color.ORANGE);
         g.setFont(new Font("Arial", Font.BOLD, 22));
         g.drawString("--- HIGHSCORES ---", (SCREEN_WIDTH - g.getFontMetrics().stringWidth("--- HIGHSCORES ---")) / 2, 180);
 
+        // 4. Отрисовка списка рекордов
         java.util.List<String> scores = HighScoreManager.loadScores();
-        g.setColor(Color.LIGHT_GRAY);
+        g.setColor(infoTextFarbe);
         g.setFont(new Font("Consolas", Font.PLAIN, 16));
-
-        g.setColor(Color.GREEN);
-        g.setFont(new Font("Arial", Font.BOLD, 16));
-        g.drawString("Drücke 'R' für Neustart", (SCREEN_WIDTH - g.getFontMetrics().stringWidth("Drücke 'R' für Neustart")) / 2, SCREEN_HEIGHT - 30);
 
         int yOffset = 220;
         int rank = 1;
@@ -427,7 +471,7 @@ public class SpielPanel extends JPanel implements ActionListener {
                 String date = parts[2];
 
                 String scoreLine = String.format("%2d. %-12s Pkt: %-5s (%s)", rank, name, score, date);
-                g.drawString(scoreLine, 130, yOffset);
+                g.drawString(scoreLine, 110, yOffset);
                 yOffset += 30;
                 rank++;
             }
@@ -436,6 +480,11 @@ public class SpielPanel extends JPanel implements ActionListener {
         if (scores.isEmpty()) {
             g.drawString("Noch keine Highscores vorhanden.", 160, yOffset);
         }
+
+        // 5. Инструкция к перезапуску в самом низу
+        g.setColor(neustartFarbe);
+        g.setFont(new Font("Arial", Font.BOLD, 16));
+        g.drawString("Drücke 'R' für Neustart", (SCREEN_WIDTH - g.getFontMetrics().stringWidth("Drücke 'R' für Neustart")) / 2, SCREEN_HEIGHT - 40);
     }
 
     @Override
@@ -474,18 +523,19 @@ public class SpielPanel extends JPanel implements ActionListener {
 
             if (paused) return;
 
+            // Свитч теперь проверяет lastPhysicalDirection вместо обычной direction
             switch (keyCode) {
                 case KeyEvent.VK_LEFT, KeyEvent.VK_A -> {
-                    if (direction != 'R') direction = 'L';
+                    if (lastPhysicalDirection != 'R') direction = 'L';
                 }
                 case KeyEvent.VK_RIGHT, KeyEvent.VK_D -> {
-                    if (direction != 'L') direction = 'R';
+                    if (lastPhysicalDirection != 'L') direction = 'R';
                 }
                 case KeyEvent.VK_UP, KeyEvent.VK_W -> {
-                    if (direction != 'D') direction = 'U';
+                    if (lastPhysicalDirection != 'D') direction = 'U';
                 }
                 case KeyEvent.VK_DOWN, KeyEvent.VK_S -> {
-                    if (direction != 'U') direction = 'D';
+                    if (lastPhysicalDirection != 'U') direction = 'D';
                 }
             }
         }

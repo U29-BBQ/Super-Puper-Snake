@@ -1,30 +1,15 @@
-### IntelliJ IDEA ###
+# Игнорируем скомпилированные классы и логи
+.gradle/
+build/
 out/
-!**/src/main/**/out/
-!**/src/test/**/out/
-.kotlin
+*.class
+*.log
 
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
+# Игнорируем настройки IntelliJ IDEA (у каждого разработчика они свои)
+.idea/
+*.iml
+*.iws
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
-.vscode/
-
-### Mac OS ###
+# Игнорируем системный мусор
 .DS_Store
+Thumbs.db
